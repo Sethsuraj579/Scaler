@@ -1,0 +1,10 @@
+name: openenv-real-world
+version: 0.1.0
+description: OpenEnv-compatible environment for realistic RL tasks.
+entrypoint: app:app
+port: 7860
+protocol: http
+tasks:
+  - easy_expense_triage
+  - medium_meeting_scheduler
+  - hard_incident_response
