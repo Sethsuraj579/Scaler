@@ -103,3 +103,16 @@ def grade() -> dict:
     except RuntimeError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     return result.model_dump()
+
+
+def main() -> None:
+    import os
+
+    import uvicorn
+
+    port = int(os.getenv("PORT", "7860"))
+    uvicorn.run("app:app", host="0.0.0.0", port=port)
+
+
+if __name__ == "__main__":
+    main()

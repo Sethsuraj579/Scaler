@@ -1,4 +1,4 @@
-FROM python:3.12-slim-bookworm
+FROM python:3.12-slim
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
@@ -15,9 +15,10 @@ RUN python -m pip install --upgrade pip setuptools wheel \
     && pip install --no-cache-dir -r requirements.txt
 
 COPY . .
+RUN pip install --no-cache-dir -e .
 
 RUN useradd -m -u 10001 appuser && chown -R appuser:appuser /app
 USER appuser
 
 EXPOSE 7860
-CMD ["uvicorn", "app:app", "--host", "0.0.0.0", "--port", "7860"]
+CMD ["server"]
