@@ -50,7 +50,8 @@ def reset(task_id: str, seed: int | None = None) -> dict:
 
 
 @app.post("/reset")
-def reset_openenv(request: dict[str, Any]) -> dict:
+def reset_openenv(request: dict[str, Any] | None = None) -> dict:
+    request = request or {}
     task_id = (
         request.get("task_id")
         or request.get("task")
@@ -68,7 +69,8 @@ def reset_openenv(request: dict[str, Any]) -> dict:
 
 
 @app.post("/step")
-def step(payload: dict[str, Any]) -> dict:
+def step(payload: dict[str, Any] | None = None) -> dict:
+    payload = payload or {}
     action_payload: dict[str, Any]
     if "command" in payload:
         action_payload = payload
