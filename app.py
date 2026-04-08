@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from typing import Any
+
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 
@@ -13,6 +15,10 @@ env = OpenEnvEnvironment()
 class ResetRequest(BaseModel):
     task_id: str
     seed: int | None = None
+
+
+class StepRequest(BaseModel):
+    action: Action
 
 
 @app.get("/")
@@ -44,21 +50,48 @@ def reset(task_id: str, seed: int | None = None) -> dict:
 
 
 @app.post("/reset")
-def reset_openenv(request: ResetRequest) -> dict:
+def reset_openenv(request: dict[str, Any]) -> dict:
+    task_id = (
+        request.get("task_id")
+        or request.get("task")
+        or request.get("task_name")
+        or request.get("id")
+        or "easy_expense_triage"
+    )
+    seed = request.get("seed")
+
     try:
-        result = env.reset(task_id=request.task_id, seed=request.seed)
+        result = env.reset(task_id=task_id, seed=seed)
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     return result.model_dump()
 
 
 @app.post("/step")
-def step(action: Action) -> dict:
+def step(payload: dict[str, Any]) -> dict:
+    action_payload: dict[str, Any]
+    if "command" in payload:
+        action_payload = payload
+    elif isinstance(payload.get("action"), dict):
+        action_payload = payload["action"]
+    else:
+        raise HTTPException(status_code=422, detail="Expected action payload with command/args")
+
+    try:
+        action = Action.model_validate(action_payload)
+    except Exception as exc:
+        raise HTTPException(status_code=422, detail=f"Invalid action payload: {exc}") from exc
+
     try:
         result = env.step(action)
     except RuntimeError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     return result.model_dump()
+
+
+@app.post("/grade")
+def grade_post() -> dict:
+    return grade()
 
 
 @app.get("/grade")
