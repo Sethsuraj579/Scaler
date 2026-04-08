@@ -12,7 +12,7 @@ from pydantic import ValidationError
 from openenv_env.environment import OpenEnvEnvironment
 from openenv_env.spec import Action
 
-DEFAULT_HF_MODEL = "meta-llama/Meta-Llama-3.1-8B-Instruct"
+DEFAULT_HF_MODEL = "meta-llama/Llama-3.1-8B-Instruct"
 DEFAULT_OPENAI_MODEL = "gpt-4.1-mini"
 
 PROMPT_TEMPLATE = """
@@ -150,14 +150,18 @@ def run_episode(task_id: str, model: str, seed: int, use_model: bool) -> float:
     if use_model:
         client = _resolve_model_client()
 
+    warned_model_not_found = False
     done = False
     while not done:
         if client is not None:
             try:
                 action = choose_action_with_model(client, model=model, task_id=task_id, obs=obs)
-            except (json.JSONDecodeError, ValidationError, Exception) as e:
-                if isinstance(e, Exception) and "model_not_found" in str(e):
-                    print(f"[WARN] Model {model} not found; falling back to heuristic.", file=sys.stderr)
+            except (json.JSONDecodeError, ValidationError):
+                action = fallback_action(obs)
+            except Exception as exc:
+                if "model_not_found" in str(exc) and not warned_model_not_found:
+                    print(f"[WARN] Model {model} not found; falling back to heuristic policy for this run.", file=sys.stderr)
+                    warned_model_not_found = True
                 action = fallback_action(obs)
         else:
             action = fallback_action(obs)
@@ -176,7 +180,7 @@ def main() -> None:
     parser.add_argument("--use-model", action="store_true")
     args = parser.parse_args()
 
-    selected_model = args.model or _resolve_default_model()
+    selected_model = args.model or (_resolve_default_model() if args.use_model else None)
 
     if args.use_model:
         hf_token = os.getenv("HF_TOKEN")
@@ -200,7 +204,10 @@ def main() -> None:
 
     results: Dict[str, float] = {}
     for idx, task_id in enumerate(task_ids):
-        results[task_id] = run_episode(task_id=task_id, model=selected_model, seed=args.seed + idx, use_model=args.use_model)
+        if args.use_model and selected_model is None:
+            raise RuntimeError("Model resolution failed while --use-model is enabled.")
+        model_for_episode = selected_model or "fallback-heuristic"
+        results[task_id] = run_episode(task_id=task_id, model=model_for_episode, seed=args.seed + idx, use_model=args.use_model)
 
     aggregate = round(sum(results.values()) / len(results), 4)
     output = {
