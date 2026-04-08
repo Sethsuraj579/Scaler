@@ -1,12 +1,18 @@
 from __future__ import annotations
 
 from fastapi import FastAPI, HTTPException
+from pydantic import BaseModel
 
 from openenv_env.environment import OpenEnvEnvironment
 from openenv_env.spec import Action
 
 app = FastAPI(title="OpenEnv Real-World Tasks", version="0.1.0")
 env = OpenEnvEnvironment()
+
+
+class ResetRequest(BaseModel):
+    task_id: str
+    seed: int | None = None
 
 
 @app.get("/")
@@ -22,6 +28,15 @@ def home() -> dict:
 def reset(task_id: str, seed: int | None = None) -> dict:
     try:
         result = env.reset(task_id=task_id, seed=seed)
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    return result.model_dump()
+
+
+@app.post("/reset")
+def reset_openenv(request: ResetRequest) -> dict:
+    try:
+        result = env.reset(task_id=request.task_id, seed=request.seed)
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     return result.model_dump()
