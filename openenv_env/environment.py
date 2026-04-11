@@ -178,6 +178,12 @@ class OpenEnvEnvironment(OpenEnvProtocol):
             return common + ["set_meeting_time", "add_agenda_item", "send_invites"]
         if task_id == "hard_incident_response":
             return common + ["ack_alert", "apply_mitigation", "update_status_page", "publish_postmortem"]
+        if task_id == "easy_robot_assembly":
+            return common + ["add_part", "complete_robot", "check_quality"]
+        if task_id == "medium_robot_factory":
+            return common + ["add_part", "test_quality", "complete_robot", "increase_speed"]
+        if task_id == "hard_robot_optimization":
+            return common + ["add_part", "test_quality", "complete_robot", "increase_speed", "repair_station"]
         return common
 
     def _summary(self, task_id: str) -> str:
@@ -196,6 +202,24 @@ class OpenEnvEnvironment(OpenEnvProtocol):
                 f"Acknowledged alerts: {acked}/{len(self._state['alerts'])}; "
                 f"impact: {self._state['customer_impact']}; "
                 f"postmortem: {self._state['postmortem_published']}"
+            )
+        if task_id == "easy_robot_assembly":
+            return (
+                f"Robots completed: {self._state['robots_completed']}/{self._state['target_robots']}; "
+                f"quality: {self._state['quality_score']:.2f}"
+            )
+        if task_id == "medium_robot_factory":
+            return (
+                f"Robots completed: {self._state['robots_completed']}/{self._state['target_robots']}; "
+                f"defective: {self._state['defective_units']}; "
+                f"quality pass rate: {self._state['quality_tests_passed']}/{self._state['quality_tests_passed'] + self._state['quality_tests_failed']}"
+            )
+        if task_id == "hard_robot_optimization":
+            defect_rate = (self._state['defective_units'] / (self._state['robots_completed'] + self._state['defective_units'])) if (self._state['robots_completed'] + self._state['defective_units']) > 0 else 0
+            return (
+                f"Robots completed: {self._state['robots_completed']}/{self._state['target_robots']}; "
+                f"defect rate: {defect_rate:.2%}; "
+                f"energy used: {self._state['energy_used']}/{self._state['energy_budget']}"
             )
         return ""
 
@@ -222,6 +246,36 @@ class OpenEnvEnvironment(OpenEnvProtocol):
                 "status_page_updated": self._state["status_page_updated"],
                 "postmortem_published": self._state["postmortem_published"],
             }
+        if task_id == "easy_robot_assembly":
+            return {
+                "robots_completed": self._state["robots_completed"],
+                "target_robots": self._state["target_robots"],
+                "available_parts": self._state["available_parts"],
+                "current_assembly": self._state["current_assembly"],
+                "quality_score": self._state["quality_score"],
+            }
+        if task_id == "medium_robot_factory":
+            return {
+                "robots_completed": self._state["robots_completed"],
+                "target_robots": self._state["target_robots"],
+                "defective_units": self._state["defective_units"],
+                "parts_inventory": self._state["parts_inventory"],
+                "current_assembly": self._state["current_assembly"],
+                "quality_tests_passed": self._state["quality_tests_passed"],
+                "quality_tests_failed": self._state["quality_tests_failed"],
+            }
+        if task_id == "hard_robot_optimization":
+            return {
+                "robots_completed": self._state["robots_completed"],
+                "target_robots": self._state["target_robots"],
+                "defective_units": self._state["defective_units"],
+                "energy_used": self._state["energy_used"],
+                "energy_budget": self._state["energy_budget"],
+                "parts_inventory": self._state["parts_inventory"],
+                "current_assembly": self._state["current_assembly"],
+                "quality_score": self._state["quality_score"],
+                "cost_per_robot": self._state["cost_per_robot"],
+            }
         return {}
 
     def _apply_action(self, action: Action) -> bool:
@@ -232,6 +286,12 @@ class OpenEnvEnvironment(OpenEnvProtocol):
             return self._apply_medium(action)
         if task_id == "hard_incident_response":
             return self._apply_hard(action)
+        if task_id == "easy_robot_assembly":
+            return self._apply_easy_robot(action)
+        if task_id == "medium_robot_factory":
+            return self._apply_medium_robot(action)
+        if task_id == "hard_robot_optimization":
+            return self._apply_hard_robot(action)
         return False
 
     def _apply_easy(self, action: Action) -> bool:
@@ -316,4 +376,186 @@ class OpenEnvEnvironment(OpenEnvProtocol):
                 return False
             self._state["postmortem_published"] = True
             return True
+        return False
+
+    def _apply_easy_robot(self, action: Action) -> bool:
+        """Handle actions for easy robot assembly task."""
+        cmd = action.command
+        args = action.args
+
+        if cmd == "noop":
+            return True
+        
+        if cmd == "add_part":
+            part_type = args.get("part_type")
+            if part_type not in self._state["current_assembly"]:
+                return False
+            if self._state["available_parts"].get(part_type, 0) <= 0:
+                return False
+            self._state["current_assembly"][part_type] += 1
+            self._state["available_parts"][part_type] -= 1
+            return True
+        
+        if cmd == "complete_robot":
+            assembly = self._state["current_assembly"]
+            # Check if robot has all required parts
+            required_parts = {"arms": 1, "legs": 1, "heads": 1, "batteries": 1}
+            if not all(assembly.get(part, 0) >= count for part, count in required_parts.items()):
+                return False
+            
+            self._state["robots_completed"] += 1
+            for part in assembly:
+                assembly[part] = 0
+            
+            # Add slight quality degradation for multiple robots
+            self._state["quality_score"] = max(0.7, self._state["quality_score"] - 0.05)
+            self._state["assembly_log"].append(f"Robot {self._state['robots_completed']} completed")
+            return True
+        
+        if cmd == "check_quality":
+            # Quality check improves score
+            self._state["quality_score"] = min(1.0, self._state["quality_score"] + 0.1)
+            return True
+        
+        return False
+
+    def _apply_medium_robot(self, action: Action) -> bool:
+        """Handle actions for medium robot factory task."""
+        cmd = action.command
+        args = action.args
+
+        if cmd == "noop":
+            return True
+        
+        if cmd == "add_part":
+            part_type = args.get("part_type")
+            if part_type not in self._state["current_assembly"]:
+                return False
+            if self._state["parts_inventory"].get(part_type, 0) <= 0:
+                return False
+            self._state["current_assembly"][part_type] += 1
+            self._state["parts_inventory"][part_type] -= 1
+            return True
+        
+        if cmd == "complete_robot":
+            assembly = self._state["current_assembly"]
+            required_parts = {"arms": 1, "legs": 1, "heads": 1, "batteries": 1, "circuits": 1}
+            if not all(assembly.get(part, 0) >= count for part, count in required_parts.items()):
+                return False
+            
+            self._state["robots_completed"] += 1
+            for part in assembly:
+                assembly[part] = 0
+            
+            # Random chance of defect
+            if self._rng.random() < 0.2:
+                self._state["defective_units"] += 1
+            
+            self._state["assembly_efficiency"] = min(1.0, self._state["assembly_efficiency"] + 0.08)
+            return True
+        
+        if cmd == "test_quality":
+            # Run quality test
+            if self._rng.random() < 0.7:
+                self._state["quality_tests_passed"] += 1
+            else:
+                self._state["quality_tests_failed"] += 1
+            return True
+        
+        if cmd == "increase_speed":
+            # Increase speed but risk more defects
+            self._state["assembly_efficiency"] = min(1.0, self._state["assembly_efficiency"] + 0.15)
+            return True
+        
+        return False
+
+    def _apply_hard_robot(self, action: Action) -> bool:
+        """Handle actions for hard robot optimization task."""
+        cmd = action.command
+        args = action.args
+
+        if cmd == "noop":
+            return True
+        
+        if cmd == "add_part":
+            part_type = args.get("part_type")
+            if part_type not in self._state["current_assembly"]:
+                return False
+            if self._state["parts_inventory"].get(part_type, 0) <= 0:
+                return False
+            
+            # Energy cost for adding parts
+            energy_cost = {"arms": 5, "legs": 5, "heads": 8, "batteries": 10, "circuits": 12, "processors": 15}.get(part_type, 5)
+            if self._state["energy_used"] + energy_cost > self._state["energy_budget"]:
+                return False
+            
+            self._state["current_assembly"][part_type] += 1
+            self._state["parts_inventory"][part_type] -= 1
+            self._state["energy_used"] += energy_cost
+            return True
+        
+        if cmd == "complete_robot":
+            assembly = self._state["current_assembly"]
+            required_parts = {"arms": 1, "legs": 1, "heads": 1, "batteries": 1, "circuits": 1, "processors": 1}
+            if not all(assembly.get(part, 0) >= count for part, count in required_parts.items()):
+                return False
+            
+            # Energy cost for completing
+            if self._state["energy_used"] + 20 > self._state["energy_budget"]:
+                return False
+            
+            self._state["robots_completed"] += 1
+            self._state["energy_used"] += 20
+            
+            for part in assembly:
+                assembly[part] = 0
+            
+            # Higher chance of defects under pressure
+            defect_chance = min(0.3, 0.1 + (self._state["energy_used"] / self._state["energy_budget"]) * 0.1)
+            if self._rng.random() < defect_chance:
+                self._state["defective_units"] += 1
+            
+            # Calculate cost per robot
+            cost = self._state["energy_used"] / max(1, self._state["robots_completed"])
+            self._state["cost_per_robot"] = cost
+            
+            # Efficiency bonus for staying under budget and low defects
+            if self._state["robots_completed"] > 0:
+                defect_rate = self._state["defective_units"] / self._state["robots_completed"]
+                if defect_rate <= 0.1:
+                    self._state["efficiency_bonus"] = min(1.0, self._state["efficiency_bonus"] + 0.15)
+            return True
+        
+        if cmd == "test_quality":
+            # Quality testing uses some energy
+            if self._state["energy_used"] + 5 > self._state["energy_budget"]:
+                return False
+            
+            self._state["energy_used"] += 5
+            if self._rng.random() < 0.75:
+                self._state["quality_score"] = min(1.0, self._state["quality_score"] + 0.05)
+            else:
+                self._state["quality_score"] = max(0.0, self._state["quality_score"] - 0.1)
+            return True
+        
+        if cmd == "increase_speed":
+            # Increase speed but consume more energy
+            if self._state["energy_used"] + 8 > self._state["energy_budget"]:
+                return False
+            self._state["energy_used"] += 8
+            return True
+        
+        if cmd == "repair_station":
+            # Repair damaged units
+            if self._state["defective_units"] <= 0:
+                return False
+            if self._state["energy_used"] + 15 > self._state["energy_budget"]:
+                return False
+            
+            self._state["defective_units"] -= 1
+            self._state["robots_completed"] += 1
+            self._state["energy_used"] += 15
+            self._state["maintenance_repairs"] += 1
+            return True
+        
         return False
