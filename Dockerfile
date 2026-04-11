@@ -1,4 +1,4 @@
-FROM python:3.12-slim@sha256:YOUR_DIGEST_HERE
+FROM python:3.12-slim-bookworm
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
@@ -20,5 +20,5 @@ RUN pip install --no-cache-dir -e .
 RUN useradd -m -u 10001 appuser && chown -R appuser:appuser /app
 USER appuser
 
-EXPOSE 7860
+EXPOSE 8000
 CMD ["server"]
