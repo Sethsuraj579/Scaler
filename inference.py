@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import uvicorn
 import sys
 from typing import Any, Dict
 
@@ -217,6 +218,9 @@ def main() -> None:
         "aggregate_score": aggregate,
     }
     print(json.dumps(output, indent=2))
+    
+    port = int(os.getenv("PORT", "7860"))
+    uvicorn.run("server.app:app", host="0.0.0.0", port=port)
 
 
 if __name__ == "__main__":

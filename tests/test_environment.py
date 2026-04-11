@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import unittest
 
-from baseline_inference import fallback_action
+from inference import fallback_action
 from openenv_env.environment import OpenEnvEnvironment
 from openenv_env.spec import Action
 
