@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 from typing import Any
 
 from fastapi import FastAPI, HTTPException
@@ -105,4 +106,9 @@ def grade() -> dict:
     return result.model_dump()
 
 
+def main() -> None:
+    import uvicorn
 
+    host = os.getenv("HOST", "0.0.0.0")
+    port = int(os.getenv("PORT", "8000"))
+    uvicorn.run("server.app:app", host=host, port=port)
