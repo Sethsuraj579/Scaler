@@ -326,3 +326,14 @@ def get_observation_space():
             "cumulative_reward": "Total reward accumulated so far"
         }
     }
+
+
+if __name__ == "__main__":
+    """Run the FastAPI application locally."""
+    import uvicorn
+    uvicorn.run(
+        app,
+        host="0.0.0.0",
+        port=7860,
+        log_level="info"
+    )
