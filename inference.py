@@ -141,7 +141,8 @@ def fallback_action(obs: Dict[str, Any]) -> Action:
     return Action(command="noop", args={})
 
 
-def run_episode(task_id: str, model: str, seed: int, use_model: bool) -> float:
+def run_episode(task_id: str, model: str, seed: int, use_model: bool) -> tuple[float, int]:
+    """Run a single episode and return (score, num_steps)."""
     env = OpenEnvEnvironment()
     reset = env.reset(task_id=task_id, seed=seed)
     obs = reset.observation.model_dump()
@@ -152,6 +153,9 @@ def run_episode(task_id: str, model: str, seed: int, use_model: bool) -> float:
 
     warned_model_not_found = False
     done = False
+    step_count = 0
+    cumulative_reward = 0.0
+    
     while not done:
         if client is not None:
             try:
@@ -169,8 +173,14 @@ def run_episode(task_id: str, model: str, seed: int, use_model: bool) -> float:
         step_result = env.step(action)
         obs = step_result.observation.model_dump()
         done = step_result.observation.done
+        step_count += 1
+        cumulative_reward += float(step_result.reward or 0.0)
+        
+        # Print step block for validator
+        print(f"[STEP] step={step_count} reward={step_result.reward}", flush=True)
 
-    return env.grade().score
+    score = env.grade().score
+    return score, step_count
 
 
 def main() -> None:
@@ -202,21 +212,36 @@ def main() -> None:
 
     task_ids = ["easy_expense_triage", "medium_meeting_scheduler", "hard_incident_response"]
 
-    results: Dict[str, float] = {}
+    results: Dict[str, Dict[str, float]] = {}
     for idx, task_id in enumerate(task_ids):
         if args.use_model and selected_model is None:
             raise RuntimeError("Model resolution failed while --use-model is enabled.")
         model_for_episode = selected_model or "fallback-heuristic"
-        results[task_id] = run_episode(task_id=task_id, model=model_for_episode, seed=args.seed + idx, use_model=args.use_model)
+        
+        # Print START block
+        print(f"[START] task={task_id}", flush=True)
+        
+        # Run episode
+        score, num_steps = run_episode(task_id=task_id, model=model_for_episode, seed=args.seed + idx, use_model=args.use_model)
+        
+        # Print END block
+        print(f"[END] task={task_id} score={score} steps={num_steps}", flush=True)
+        
+        # Store results
+        results[task_id] = {"score": score, "steps": num_steps}
 
-    aggregate = round(sum(results.values()) / len(results), 4)
+    # Compute aggregate score
+    scores = [results[tid]["score"] for tid in task_ids]
+    aggregate = round(sum(scores) / len(scores), 4)
+    
+    # Print final JSON output
     output = {
         "model": selected_model if args.use_model else "fallback-heuristic",
         "seed": args.seed,
-        "task_scores": results,
+        "task_scores": {tid: results[tid]["score"] for tid in task_ids},
         "aggregate_score": aggregate,
     }
-    print(json.dumps(output, indent=2))
+    print(json.dumps(output, indent=2), flush=True)
 
 
 if __name__ == "__main__":
