@@ -34,7 +34,7 @@ environments: Dict[str, OpenEnvWrapper] = {}
 # Request/Response Models
 class ResetRequest(BaseModel):
     """Request to reset environment."""
-    task_id: str = "easy"
+    task_id: Optional[str] = "easy"
     session_id: Optional[str] = None
 
 
