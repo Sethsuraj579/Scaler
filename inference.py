@@ -51,13 +51,16 @@ def choose_action_with_model(client: OpenAI, model: str, task_id: str, obs: Dict
 
 def _resolve_model_client() -> OpenAI:
     """Resolve OpenAI client with support for LiteLLM proxy via API_BASE_URL."""
-    # Check for LiteLLM proxy first (validator provides this)
+    # Check for LiteLLM proxy first (validator provides both API_BASE_URL and API_KEY)
     api_base_url = os.getenv("API_BASE_URL")
-    if api_base_url:
-        # Use LiteLLM proxy with a dummy key
-        api_key = os.getenv("OPENAI_API_KEY") or "sk-proxy-key"
+    api_key = os.getenv("API_KEY")
+    
+    if api_base_url and api_key:
+        # Use LiteLLM proxy with provided credentials
+        print(f"[DEBUG] Using validator LiteLLM proxy at {api_base_url}", file=sys.stderr)
         return OpenAI(api_key=api_key, base_url=api_base_url)
     
+    # Fall back to other credential sources
     hf_token = os.getenv("HF_TOKEN")
     openai_token = os.getenv("OPENAI_API_KEY")
     base_url = os.getenv("HF_OPENAI_BASE_URL") or os.getenv("OPENAI_BASE_URL")
@@ -91,7 +94,8 @@ def _resolve_model_client() -> OpenAI:
         return OpenAI(api_key=openai_token, base_url=base_url or "https://api.openai.com/v1")
 
     raise RuntimeError(
-        "Missing API credentials. Set HF_TOKEN, OPENAI_API_KEY, or API_BASE_URL for LiteLLM proxy."
+        "Missing API credentials. Set API_BASE_URL + API_KEY for LiteLLM proxy, "
+        "HF_TOKEN for Hugging Face routing, or OPENAI_API_KEY for OpenAI API."
     )
 
 
@@ -205,30 +209,33 @@ def main() -> None:
     parser.add_argument("--use-model", action="store_true", help="Use model-based agent instead of fallback heuristic")
     args = parser.parse_args()
     
-    # Auto-enable model usage if API_BASE_URL is provided (validator scenario)
+    # Auto-enable model usage if API_BASE_URL + API_KEY are provided (validator scenario)
     api_base_url = os.getenv("API_BASE_URL")
-    use_model = args.use_model or bool(api_base_url)
+    api_key = os.getenv("API_KEY")
+    use_model = args.use_model or (bool(api_base_url) and bool(api_key))
 
     selected_model = args.model or (_resolve_default_model() if use_model else None)
 
     if use_model:
         api_base_url = os.getenv("API_BASE_URL")
+        api_key = os.getenv("API_KEY")
         hf_token = os.getenv("HF_TOKEN")
         openai_token = os.getenv("OPENAI_API_KEY")
-        base_url = os.getenv("HF_OPENAI_BASE_URL") or os.getenv("OPENAI_BASE_URL")
 
-        if api_base_url:
+        if api_base_url and api_key:
             print(
-                f"[DEBUG] Using LiteLLM proxy at {api_base_url} with model={selected_model}",
+                f"[DEBUG] Using validator LiteLLM proxy at {api_base_url} with model={selected_model}",
                 file=sys.stderr,
             )
         elif hf_token:
+            base_url = os.getenv("HF_OPENAI_BASE_URL") or os.getenv("OPENAI_BASE_URL")
             resolved_base = base_url or "https://router.huggingface.co/v1"
             print(
                 f"[DEBUG] Using HF_TOKEN routing to {resolved_base} with model={selected_model}",
                 file=sys.stderr,
             )
         elif openai_token:
+            base_url = os.getenv("OPENAI_BASE_URL")
             resolved_base = base_url or "https://api.openai.com/v1"
             print(
                 f"[DEBUG] Using OPENAI_API_KEY routing to {resolved_base} with model={selected_model}",
