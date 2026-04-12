@@ -89,31 +89,33 @@ def get_config():
 
 
 @app.post("/reset")
-def reset_environment(request: ResetRequest):
+def reset_environment(task_id: Optional[str] = None, session_id: Optional[str] = None):
     """
     Reset the environment and start a new episode.
     
     Args:
-        request: Reset request with task_id and optional session_id
+        task_id: Task difficulty ("easy", "medium", "hard"), default is "easy"
+        session_id: Optional session identifier
     
     Returns:
         Initial observation and episode info
     """
-    session_id = request.session_id or f"session_{len(environments)}"
+    task = task_id or "easy"
+    sid = session_id or f"session_{len(environments)}"
     
     try:
-        env = OpenEnvWrapper(task_id=request.task_id)
+        env = OpenEnvWrapper(task_id=task)
         reset_output = env.reset()
         
         # Store environment for this session
-        environments[session_id] = env
+        environments[sid] = env
         
         return {
-            "session_id": session_id,
+            "session_id": sid,
             "observation": reset_output.observation,
             "info": {
                 **reset_output.info,
-                "session_id": session_id
+                "session_id": sid
             }
         }
     except ValueError as e:
@@ -121,39 +123,40 @@ def reset_environment(request: ResetRequest):
 
 
 @app.post("/step")
-def step_environment(request: StepRequest):
+def step_environment(action: Optional[int] = None, session_id: Optional[str] = None):
     """
     Execute one step in the environment.
     
     Args:
-        request: Step request with action and optional session_id
+        action: Action to take (0-4), default is 0
+        session_id: Session identifier (uses latest if not specified)
     
     Returns:
         Observation, reward, done flags, and info
     """
-    session_id = request.session_id
+    sid = session_id
     
     # Use latest session if not specified
-    if not session_id:
+    if not sid:
         if not environments:
             raise HTTPException(status_code=404, detail="No session available. Call /reset first.")
-        session_id = list(environments.keys())[-1]
+        sid = list(environments.keys())[-1]
     
-    if session_id not in environments:
-        raise HTTPException(status_code=404, detail=f"Session not found: {session_id}")
+    if sid not in environments:
+        raise HTTPException(status_code=404, detail=f"Session not found: {sid}")
     
     # Default to action 0 if not specified
-    action = request.action if request.action is not None else 0
+    act = action if action is not None else 0
     
     try:
-        if action < 0 or action > 4:
-            raise ValueError(f"Invalid action: {action}. Must be 0-4.")
+        if act < 0 or act > 4:
+            raise ValueError(f"Invalid action: {act}. Must be 0-4.")
         
-        env = environments[session_id]
-        step_output = env.step(action)
+        env = environments[sid]
+        step_output = env.step(act)
         
         return {
-            "session_id": session_id,
+            "session_id": sid,
             "observation": step_output.observation,
             "reward": step_output.reward,
             "terminated": step_output.terminated,
@@ -165,25 +168,39 @@ def step_environment(request: StepRequest):
 
 
 @app.post("/grade")
-def grade_episode(request: GradeRequest):
+def grade_episode(
+    task_id: Optional[str] = "easy",
+    cumulative_reward: float = 0.0,
+    items_collected: int = 0,
+    total_items: int = 3,
+    steps_taken: int = 0,
+    max_steps: int = 100,
+    hit_hazard: bool = False
+):
     """
     Grade an episode performance.
     
     Args:
-        request: Grading request with episode stats
+        task_id: Task difficulty (easy, medium, hard)
+        cumulative_reward: Total reward earned
+        items_collected: Number of items collected
+        total_items: Total items available
+        steps_taken: Number of steps taken
+        max_steps: Maximum steps allowed
+        hit_hazard: Whether agent hit a hazard
     
     Returns:
         Score (0.0-1.0) and feedback
     """
     try:
         grade_output = TaskGrader.grade_episode(
-            task_id=request.task_id,
-            cumulative_reward=request.cumulative_reward,
-            items_collected=request.items_collected,
-            total_items=request.total_items,
-            steps_taken=request.steps_taken,
-            max_steps=request.max_steps,
-            hit_hazard=request.hit_hazard
+            task_id=task_id,
+            cumulative_reward=cumulative_reward,
+            items_collected=items_collected,
+            total_items=total_items,
+            steps_taken=steps_taken,
+            max_steps=max_steps,
+            hit_hazard=hit_hazard
         )
         
         return {
