@@ -330,7 +330,7 @@ class HFAgent:
         
         # Initialize HuggingFace client
         try:
-            from huggingface_hub import InferenceClient
+            from huggingface_hub import InferenceClient  # type: ignore[import]
             self.client = InferenceClient(
                 model=model,
                 token=self.hf_token
