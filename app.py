@@ -40,18 +40,18 @@ class ResetRequest(BaseModel):
 
 class StepRequest(BaseModel):
     """Request to step environment."""
-    action: int
-    session_id: str
+    action: Optional[int] = None
+    session_id: Optional[str] = None
 
 
 class GradeRequest(BaseModel):
     """Request to grade an episode."""
-    task_id: str
-    cumulative_reward: float
-    items_collected: int
-    total_items: int
-    steps_taken: int
-    max_steps: int
+    task_id: Optional[str] = "easy"
+    cumulative_reward: float = 0.0
+    items_collected: int = 0
+    total_items: int = 3
+    steps_taken: int = 0
+    max_steps: int = 100
     hit_hazard: bool = False
 
 
@@ -126,22 +126,34 @@ def step_environment(request: StepRequest):
     Execute one step in the environment.
     
     Args:
-        request: Step request with action and session_id
+        request: Step request with action and optional session_id
     
     Returns:
         Observation, reward, done flags, and info
     """
-    if request.session_id not in environments:
-        raise HTTPException(status_code=404, detail=f"Session not found: {request.session_id}")
+    session_id = request.session_id
+    
+    # Use latest session if not specified
+    if not session_id:
+        if not environments:
+            raise HTTPException(status_code=404, detail="No session available. Call /reset first.")
+        session_id = list(environments.keys())[-1]
+    
+    if session_id not in environments:
+        raise HTTPException(status_code=404, detail=f"Session not found: {session_id}")
+    
+    # Default to action 0 if not specified
+    action = request.action if request.action is not None else 0
     
     try:
-        if request.action < 0 or request.action > 4:
-            raise ValueError(f"Invalid action: {request.action}. Must be 0-4.")
+        if action < 0 or action > 4:
+            raise ValueError(f"Invalid action: {action}. Must be 0-4.")
         
-        env = environments[request.session_id]
-        step_output = env.step(request.action)
+        env = environments[session_id]
+        step_output = env.step(action)
         
         return {
+            "session_id": session_id,
             "observation": step_output.observation,
             "reward": step_output.reward,
             "terminated": step_output.terminated,
@@ -206,6 +218,44 @@ def render_environment(session_id: str):
         "task": env.task_id,
         "step": env.env.step_count,
         "agent_pos": env.env.agent_pos
+    }
+
+
+@app.get("/state/{session_id}")
+def get_state(session_id: Optional[str] = None):
+    """
+    Get current environment state without taking a step.
+    
+    Args:
+        session_id: Session identifier (uses latest if not provided)
+    
+    Returns:
+        Current observation, env info, and metadata
+    """
+    sid = session_id
+    
+    # Use latest session if not specified
+    if not sid:
+        if not environments:
+            raise HTTPException(status_code=404, detail="No session available. Call /reset first.")
+        sid = list(environments.keys())[-1]
+    
+    if sid not in environments:
+        raise HTTPException(status_code=404, detail=f"Session not found: {sid}")
+    
+    env = environments[sid]
+    return {
+        "session_id": sid,
+        "observation": env.env._get_observation(),
+        "info": {
+            "step": env.env.step_count,
+            "task": env.task_id,
+            "grid_size": env.env.grid_size,
+            "agent_pos": env.env.agent_pos,
+            "items_collected": env.env.collected_items,
+            "total_items": env.env.num_items,
+            "steps_remaining": max(0, env.env.max_steps - env.env.step_count) / env.env.max_steps
+        }
     }
 
 
