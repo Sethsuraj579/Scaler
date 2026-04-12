@@ -50,6 +50,14 @@ def choose_action_with_model(client: OpenAI, model: str, task_id: str, obs: Dict
 
 
 def _resolve_model_client() -> OpenAI:
+    """Resolve OpenAI client with support for LiteLLM proxy via API_BASE_URL."""
+    # Check for LiteLLM proxy first (validator provides this)
+    api_base_url = os.getenv("API_BASE_URL")
+    if api_base_url:
+        # Use LiteLLM proxy with a dummy key
+        api_key = os.getenv("OPENAI_API_KEY") or "sk-proxy-key"
+        return OpenAI(api_key=api_key, base_url=api_base_url)
+    
     hf_token = os.getenv("HF_TOKEN")
     openai_token = os.getenv("OPENAI_API_KEY")
     base_url = os.getenv("HF_OPENAI_BASE_URL") or os.getenv("OPENAI_BASE_URL")
@@ -83,11 +91,18 @@ def _resolve_model_client() -> OpenAI:
         return OpenAI(api_key=openai_token, base_url=base_url or "https://api.openai.com/v1")
 
     raise RuntimeError(
-        "Missing API credentials. Set HF_TOKEN for Hugging Face routing or OPENAI_API_KEY for the OpenAI API."
+        "Missing API credentials. Set HF_TOKEN, OPENAI_API_KEY, or API_BASE_URL for LiteLLM proxy."
     )
 
 
 def _resolve_default_model() -> str:
+    """Resolve default model based on available credentials or API_BASE_URL."""
+    # Check for LiteLLM proxy first (validator provides this)
+    api_base_url = os.getenv("API_BASE_URL")
+    if api_base_url:
+        # Use a generic model that works with most LiteLLM proxies
+        return "gpt-4"
+    
     hf_token = os.getenv("HF_TOKEN")
     openai_token = os.getenv("OPENAI_API_KEY")
 
@@ -187,17 +202,27 @@ def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--model", default=None, help="Optional explicit model override.")
     parser.add_argument("--seed", type=int, default=1337)
-    parser.add_argument("--use-model", action="store_true")
+    parser.add_argument("--use-model", action="store_true", help="Use model-based agent instead of fallback heuristic")
     args = parser.parse_args()
+    
+    # Auto-enable model usage if API_BASE_URL is provided (validator scenario)
+    api_base_url = os.getenv("API_BASE_URL")
+    use_model = args.use_model or bool(api_base_url)
 
-    selected_model = args.model or (_resolve_default_model() if args.use_model else None)
+    selected_model = args.model or (_resolve_default_model() if use_model else None)
 
-    if args.use_model:
+    if use_model:
+        api_base_url = os.getenv("API_BASE_URL")
         hf_token = os.getenv("HF_TOKEN")
         openai_token = os.getenv("OPENAI_API_KEY")
         base_url = os.getenv("HF_OPENAI_BASE_URL") or os.getenv("OPENAI_BASE_URL")
 
-        if hf_token:
+        if api_base_url:
+            print(
+                f"[DEBUG] Using LiteLLM proxy at {api_base_url} with model={selected_model}",
+                file=sys.stderr,
+            )
+        elif hf_token:
             resolved_base = base_url or "https://router.huggingface.co/v1"
             print(
                 f"[DEBUG] Using HF_TOKEN routing to {resolved_base} with model={selected_model}",
@@ -214,15 +239,15 @@ def main() -> None:
 
     results: Dict[str, Dict[str, float]] = {}
     for idx, task_id in enumerate(task_ids):
-        if args.use_model and selected_model is None:
-            raise RuntimeError("Model resolution failed while --use-model is enabled.")
+        if use_model and selected_model is None:
+            raise RuntimeError("Model resolution failed while model is enabled.")
         model_for_episode = selected_model or "fallback-heuristic"
         
         # Print START block
         print(f"[START] task={task_id}", flush=True)
         
         # Run episode
-        score, num_steps = run_episode(task_id=task_id, model=model_for_episode, seed=args.seed + idx, use_model=args.use_model)
+        score, num_steps = run_episode(task_id=task_id, model=model_for_episode, seed=args.seed + idx, use_model=use_model)
         
         # Print END block
         print(f"[END] task={task_id} score={score} steps={num_steps}", flush=True)
