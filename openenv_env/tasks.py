@@ -7,6 +7,16 @@ from typing import Any, Dict, List, Literal
 Difficulty = Literal["easy", "medium", "hard"]
 
 
+def _normalize_score(score: float) -> float:
+    """Ensure score is strictly between 0 and 1 (open interval).
+    
+    Maps [0, 1] to (0, 1): 0 → 0.01, 0.5 → 0.50, 1 → 0.99
+    This ensures scores never reach the boundaries, satisfying validator requirements.
+    """
+    clamped = max(0.0, min(1.0, score))
+    return round(0.01 + clamped * 0.98, 4)
+
+
 @dataclass
 class TaskDefinition:
     task_id: str
@@ -173,7 +183,8 @@ def grade_easy_expense(state: Dict[str, Any]) -> float:
     risky = [t for t in transactions if t["category"] == "entertainment"]
     risk_score = 1.0 if all(t.get("approved") is False for t in risky) else 0.0
 
-    return round(max(0.0, min(1.0, 0.4 * approvals_done + 0.3 * budget_score + 0.3 * risk_score)), 4)
+    score = max(0.0, min(1.0, 0.4 * approvals_done + 0.3 * budget_score + 0.3 * risk_score))
+    return _normalize_score(score)
 
 
 def grade_medium_scheduler(state: Dict[str, Any]) -> float:
@@ -192,7 +203,8 @@ def grade_medium_scheduler(state: Dict[str, Any]) -> float:
     invite_score = 1.0 if sent_invites else 0.0
     agenda_score = min(1.0, agenda_len / 3)
 
-    return round(max(0.0, min(1.0, 0.5 * time_score + 0.3 * invite_score + 0.2 * agenda_score)), 4)
+    score = max(0.0, min(1.0, 0.5 * time_score + 0.3 * invite_score + 0.2 * agenda_score))
+    return _normalize_score(score)
 
 
 def grade_hard_incident(state: Dict[str, Any]) -> float:
@@ -206,13 +218,11 @@ def grade_hard_incident(state: Dict[str, Any]) -> float:
     status_score = 1.0 if state["status_page_updated"] else 0.0
     postmortem_score = 1.0 if state["postmortem_published"] else 0.0
 
-    return round(
-        max(
-            0.0,
-            min(1.0, 0.25 * ack_ratio + 0.25 * mitigation_ratio + 0.2 * impact_score + 0.15 * status_score + 0.15 * postmortem_score),
-        ),
-        4,
+    score = max(
+        0.0,
+        min(1.0, 0.25 * ack_ratio + 0.25 * mitigation_ratio + 0.2 * impact_score + 0.15 * status_score + 0.15 * postmortem_score),
     )
+    return _normalize_score(score)
 
 
 def grade_easy_robot_assembly(state: Dict[str, Any]) -> float:
@@ -224,7 +234,8 @@ def grade_easy_robot_assembly(state: Dict[str, Any]) -> float:
     completion_score = min(1.0, robots_done / target)
     quality_score = quality
     
-    return round(max(0.0, min(1.0, 0.6 * completion_score + 0.4 * quality_score)), 4)
+    score = max(0.0, min(1.0, 0.6 * completion_score + 0.4 * quality_score))
+    return _normalize_score(score)
 
 
 def grade_medium_robot_factory(state: Dict[str, Any]) -> float:
@@ -248,7 +259,8 @@ def grade_medium_robot_factory(state: Dict[str, Any]) -> float:
     defect_penalty = max(0.0, -state["defective_units"] * 0.1)
     efficiency = state["assembly_efficiency"]
     
-    return round(max(0.0, min(1.0, 0.4 * completion_score + 0.3 * quality_score + 0.2 * efficiency + 0.1 + defect_penalty)), 4)
+    score = max(0.0, min(1.0, 0.4 * completion_score + 0.3 * quality_score + 0.2 * efficiency + 0.1 + defect_penalty))
+    return _normalize_score(score)
 
 
 def grade_hard_robot_optimization(state: Dict[str, Any]) -> float:
@@ -269,7 +281,8 @@ def grade_hard_robot_optimization(state: Dict[str, Any]) -> float:
     
     efficiency_bonus = state["efficiency_bonus"]
     
-    return round(max(0.0, min(1.0, 0.35 * completion_score + 0.3 * quality_score + 0.2 * energy_efficiency + 0.15 * efficiency_bonus)), 4)
+    score = max(0.0, min(1.0, 0.35 * completion_score + 0.3 * quality_score + 0.2 * energy_efficiency + 0.15 * efficiency_bonus))
+    return _normalize_score(score)
 
 
 def grade_task(task_id: str, state: Dict[str, Any]) -> float:
